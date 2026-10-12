@@ -1,0 +1,56 @@
+; Lisa Share phrase file: alerts and menus (lisa-c tools/phrasec.py).
+; Phrase version (the tool passes it to InitMP), alerts to cache, cache bytes:
+2
+2
+1000
+; Alert sign labels: ask, wait, stop, note, caution
+?
+Wait
+Stop
+Note
+Caution
+; Button labels, Cancel and OK first, then a blank line
+Cancel
+OK
+
+; Alert 1 stands in for any alert missing from this file; ^N is its number.
+1 note alert
+Lisa Share could not find the message that should appear here.  If you are
+unable to proceed, mention the number ^N to the person who gave you Lisa Share.
+
+; Alert 2 is shown if the tool cannot go on.
+2 stop alert
+Lisa Share is having technical difficulties and must stop.  Your other
+documents are not affected.
+
+0
+
+; Menus follow the Office System: File/Print first, no Quit, no Close.
+1
+File/Print
+Set Aside Everything
+Set Aside
+
+2
+Edit
+Copy/C
+Copy as LisaWrite
+-
+Paste/V
+Paste as Text
+
+3
+Server
+Find Servers
+Open/O
+Go Up/U
+-
+Disconnect
+
+4
+Housekeeping
+Pictorial View
+Alphabetical View
+Chronological View
+
+0

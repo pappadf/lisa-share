@@ -1,0 +1,32 @@
+; Phrase file source for nbp (compiled by tools/phrasec.py).
+; Phrase version (the tool passes it to InitMP), alerts to cache, cache bytes:
+2
+2
+1000
+; Alert sign labels: ask, wait, stop, note, caution
+?
+Wait
+Stop
+Note
+Caution
+; Button labels, Cancel and OK first, then a blank line
+Cancel
+OK
+
+; Alert 1 stands in for any alert missing from this file; ^N is its number.
+1 note alert
+NBP Probe could not find the message for alert ^N.
+
+; Alert 2 is shown if the tool cannot go on.
+2 stop alert
+NBP Probe has run into a problem and must stop.  Your other documents are safe.
+
+0
+
+; Menu 1: the File/Print menu (items 1 and 2 are handled in probe.c)
+1
+File/Print
+Set Aside Everything
+Set Aside "NBP Probe"
+
+0

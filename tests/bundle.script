@@ -1,0 +1,50 @@
+# Lisa Share: copy a Lisa document (not a Mac file) to the server as it is,
+# then back.  The test floppy has "Aardvark Note", a document of tool 20 with
+# one file (TEXT); unpositioned icons sit in reverse name order, so it is the
+# fourth icon in the diskette's window, at (430, 60).  Same positions as
+# roundtrip.script.
+def menu(x, y) {
+  machine.adb.mouse.move $x 7 "global"
+  scheduler.run 2000000
+  machine.adb.mouse.click true
+  scheduler.run 3000000
+  machine.adb.mouse.move $x $y "global"
+  scheduler.run 3000000
+  machine.adb.mouse.click false
+  scheduler.run 3000000
+}
+# connect, open the volume
+menu(230, 23)
+scheduler.run 60000000
+click(100, 60)
+scheduler.run 5000000
+menu(230, 38)
+scheduler.run 60000000
+click(100, 60)
+scheduler.run 5000000
+menu(230, 38)
+scheduler.run 60000000
+# set the browser aside; select Aardvark Note; Edit > Copy Reference;
+# reopen the browser; Edit > Paste: the server gets "Aardvark Note.lisa"
+menu(95, 38)
+scheduler.run 60000000
+click(310, 60)
+scheduler.run 20000000
+menu(168, 83)
+scheduler.run 20000000
+dclick(58, 338)
+scheduler.run 100000000
+menu(168, 68)
+scheduler.run 150000000
+# the folder is the first row (names sort before Hello.txt): Edit > Copy;
+# set aside; Edit > Paste in the diskette's window: a new "Aardvark Note"
+click(100, 60)
+scheduler.run 5000000
+menu(168, 23)
+scheduler.run 20000000
+menu(95, 38)
+scheduler.run 60000000
+click(400, 200)
+scheduler.run 20000000
+menu(168, 98)
+scheduler.run 150000000

@@ -1,0 +1,15 @@
+# After the probe has put its icon reference on the Clipboard and set its
+# document aside: activate the diskette's window (an empty spot in it), then
+# Edit > Paste in the Desktop Manager's menu bar.
+click(400, 200)
+scheduler.run 20000000
+machine.adb.mouse.move 168 7 "global"
+scheduler.run 2000000
+machine.adb.mouse.click true
+scheduler.run 3000000
+machine.adb.mouse.move 168 60 "global"
+scheduler.run 2000000
+machine.adb.mouse.move 180 98 "global"
+scheduler.run 3000000
+machine.adb.mouse.click false
+scheduler.run 100000000

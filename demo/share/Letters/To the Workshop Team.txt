@@ -1,0 +1,4 @@
+Dear Workshop team,
+
+The new release builds every tool on the host now, so nothing needs to be
+compiled on the Lisa itself. Please try it and tell us what breaks.

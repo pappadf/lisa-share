@@ -1,0 +1,87 @@
+# Build Lisa Share's floppy when a version tag (v*) is pushed, attach it to the
+# GitHub release, and publish it on GitHub Pages:
+#   https://<owner>.github.io/<repo>/lisashare.dc42   the latest floppy
+#   https://<owner>.github.io/<repo>/                 a page with a Boot link
+# (each deployment replaces the site; every version stays a release asset)
+# Pages sends CORS headers, so granny-smith's web build (and its Boot Shelf)
+# can load the floppy straight from there with FD0=<url>.
+#
+# One-time setup: Settings > Pages > Source: "GitHub Actions"; then Settings >
+# Environments > github-pages > Deployment branches and tags: add the tag
+# rule "v*" (by default only main may deploy, and this runs on tags).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:          # rebuild and republish the latest tag by hand
+
+permissions:
+  contents: write             # create the release
+  pages: write                # deploy to Pages
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Version
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in v*) ;; *) tag="$(git describe --tags --abbrev=0)" ;; esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build tools for picolibc
+        run: sudo apt-get update && sudo apt-get install -y meson ninja-build
+
+      - name: Compiler (lisa-c's prebuilt Retro68 GCC)
+        run: make toolchain
+
+      - name: Build the floppy
+        run: make
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          cp build/lisashare.dc42 "lisashare-$TAG.dc42"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "lisashare-$TAG.dc42" --clobber
+          else
+            gh release create "$TAG" "lisashare-$TAG.dc42" --title "Lisa Share $TAG" --generate-notes
+          fi
+
+      - name: Pages site
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          mkdir -p site
+          cp build/lisashare.dc42 site/lisashare.dc42
+          python3 tools/pages.py "https://$OWNER.github.io/$REPO" "$TAG" > site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

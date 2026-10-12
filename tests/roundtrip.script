@@ -1,0 +1,55 @@
+# Lisa Share: download a file from the AppleShare server as a Mac file
+# document, then upload that document back to the server.  Run by make
+# test-tool after the browser document has opened
+# (lisa-c's emu/run-los-tool.sh, POST=).  Positions: the Server menu at x 230,
+# the Edit menu at 168 and File/Print at 95; menu items 15 pixels apart from
+# y 23; the browser's rows 14 pixels apart from y 60.
+def menu(x, y) {
+  machine.adb.mouse.move $x 7 "global"
+  scheduler.run 2000000
+  machine.adb.mouse.click true
+  scheduler.run 3000000
+  machine.adb.mouse.move $x $y "global"
+  scheduler.run 3000000
+  machine.adb.mouse.click false
+  scheduler.run 3000000
+}
+# Server > Find Servers; select "Shared Folders"; Server > Open
+menu(230, 23)
+scheduler.run 60000000
+click(100, 60)
+scheduler.run 5000000
+menu(230, 38)
+scheduler.run 60000000
+# select the volume "Lisa Share"; Server > Open
+click(100, 60)
+scheduler.run 5000000
+menu(230, 38)
+scheduler.run 60000000
+# select Hello.txt; Edit > Copy
+click(100, 60)
+scheduler.run 5000000
+menu(168, 23)
+scheduler.run 20000000
+# File/Print > Set Aside the browser; in the diskette's window, Edit > Paste
+menu(95, 38)
+scheduler.run 60000000
+click(400, 200)
+scheduler.run 20000000
+menu(168, 98)
+scheduler.run 150000000
+machine.screen.save "build/emu-tool/r1-pasted.png"
+# Select the new Hello.txt document; Edit > Copy Reference in the Desktop
+# Manager; reopen the browser (set aside: bottom left of the desktop) and
+# Edit > Paste: it goes back to the server as "Hello.txt 2".  The session
+# has expired meanwhile (two minutes without tickles): the tool reconnects.
+click(310, 60)
+scheduler.run 20000000
+menu(168, 83)
+scheduler.run 20000000
+dclick(58, 338)
+scheduler.run 100000000
+machine.screen.save "build/emu-tool/r2-reopened.png"
+menu(168, 68)
+scheduler.run 150000000
+machine.screen.save "build/emu-tool/r3-uploaded.png"

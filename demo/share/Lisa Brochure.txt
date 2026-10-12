@@ -1,0 +1,5 @@
+Lisa: the personal office system.
+
+Lisa works the way you do. Everything you need is on the desktop:
+documents, folders, a calculator, a clock and a wastebasket. Point at
+what you want with the mouse, and Lisa does the rest.

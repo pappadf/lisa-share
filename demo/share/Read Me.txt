@@ -1,0 +1,7 @@
+Welcome to the Shared volume.
+
+This file lives on an AppleShare server. Lisa Share copied it across
+LocalTalk to the Lisa, and turned it into a LisaWrite document on the way.
+
+Every line of the original text is a paragraph here. Change it, then copy
+it back to the server with Paste as Text.
