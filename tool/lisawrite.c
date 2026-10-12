@@ -32,6 +32,10 @@
 
 static uint8_t pg[512];
 static int32_t page_start[MAXPAGES], page_len[MAXPAGES];
+/* The stream LisaWrite stores: the header "\r", the footer "\r", then the
+   body (the caller's buffer, every paragraph ending in CR). */
+static const uint8_t *body;
+#define T(i) ((i) < 2 ? (uint8_t)'\r' : body[(i) - 2])
 
 static void put16(uint8_t *p, unsigned v)
 {
@@ -46,9 +50,9 @@ static void put32(uint8_t *p, uint32_t v)
 }
 
 /* Does a paragraph start at position i of the stream? */
-static int par_start(const uint8_t *t, int32_t n, int32_t i)
+static int par_start(int32_t n, int32_t i)
 {
-    return i == 0 || (i < n && t[i - 1] == '\r');
+    return i == 0 || (i < n && T(i - 1) == '\r');
 }
 
 static int32_t lp_of(int npages, int32_t pos)
@@ -61,41 +65,41 @@ static int32_t lp_of(int npages, int32_t pos)
     return (int32_t)(npages - 1) * 512 + page_len[npages - 1];
 }
 
-/* The stream: header "\r", footer "\r", then the body with every paragraph
-   ending in CR.  Returns its length. */
-static int32_t make_stream(const uint8_t *text, int32_t len, uint8_t *t, int32_t max)
+/* The body in place: every line end (CR, LF or CR LF) becomes CR, and the
+   last paragraph gets one.  Returns the stream's length (the body's + 2). */
+static int32_t make_stream(uint8_t *text, int32_t len)
 {
     int32_t n = 0, i;
+    uint8_t c, prev = 0;                /* prev: the original, text[i - 1] may be rewritten */
 
-    t[n++] = '\r';
-    t[n++] = '\r';
-    for (i = 0; i < len && n < max - 1; i++) {
-        if (text[i] == '\n' && i > 0 && text[i - 1] == '\r')
+    for (i = 0; i < len; i++, prev = c) {
+        c = text[i];
+        if (c == '\n' && prev == '\r')
             continue;                   /* CR LF */
-        t[n++] = text[i] == '\n' ? '\r' : text[i];
+        text[n++] = c == '\n' ? '\r' : c;
     }
-    if (t[n - 1] != '\r')
-        t[n++] = '\r';
-    return n;
+    if (n == 0 || text[n - 1] != '\r')
+        text[n++] = '\r';
+    body = text;
+    return n + 2;
 }
 
-int lw_write(const char *path, const uint8_t *text, int32_t len)
+int lw_write(const char *path, uint8_t *text, int32_t len)
 {
-    static uint8_t t[LW_MAX_TEXT + 8];
     int32_t n, pos, k, j, npar, add, lp0, lpnext, q;
     int npages = 0, p, i, nruns, nparruns;
     int16_t refnum;
     uint16_t runs[260];
     int err;
 
-    n = make_stream(text, len, t, sizeof t);
+    n = make_stream(text, len);
     /* fill pages greedily: characters + (paragraph runs + dummy + character
        run + vanish run) * 2 must stay under 504 */
     for (pos = 0; pos < n && npages < MAXPAGES; pos += k) {
         k = 0;
         npar = 1;
         while (pos + k < n) {
-            add = (par_start(t, n, pos + k + 1) && k + 1 < n - pos) ? 1 : 0;
+            add = (par_start(n, pos + k + 1) && k + 1 < n - pos) ? 1 : 0;
             if ((k + 1) + (npar + add + 3) * 2 >= CB_FREE)
                 break;
             k++;
@@ -124,14 +128,15 @@ int lw_write(const char *path, const uint8_t *text, int32_t len)
     for (p = 0; p < npages && !err; p++) {
         int32_t p0 = page_start[p], L = page_len[p];
         memset(pg, 0, sizeof pg);
-        memcpy(pg, t + p0, (size_t)L);
+        for (j = 0; j < L; j++)
+            pg[j] = T(p0 + j);
         nruns = 0;
-        if (!par_start(t, n, p0))
+        if (!par_start(n, p0))
             runs[nruns++] = (uint16_t)(OFBC_STD << 9);      /* continues a paragraph */
         for (j = 0; j < L; j++)
-            if (par_start(t, n, p0 + j))
+            if (par_start(n, p0 + j))
                 runs[nruns++] = (uint16_t)(OFBC_STD << 9 | j);
-        if (t[p0 + L - 1] == '\r')
+        if (T(p0 + L - 1) == '\r')
             runs[nruns++] = (uint16_t)(OFBC_DUMMY << 9 | L);
         nparruns = nruns;
         runs[nruns++] = (uint16_t)(OFBC_STD << 9);          /* the character run */
@@ -141,18 +146,18 @@ int lw_write(const char *path, const uint8_t *text, int32_t len)
 
         /* clpPrv: back to the start of the paragraph this page starts in */
         lp0 = (int32_t)p * 512;
-        for (q = p0; q > 0 && !par_start(t, n, q); q--)
+        for (q = p0; q > 0 && !par_start(n, q); q--)
             ;
         put16(pg + 504, (unsigned)(lp0 - lp_of(npages, q)));
         /* clpNxt: on from the next page's start to the next paragraph start,
            which may be the dummy at the end of a page that ends a paragraph */
         lpnext = 0;
-        for (q = p0 + L; q < n && !par_start(t, n, q); q++)
+        for (q = p0 + L; q < n && !par_start(n, q); q++)
             ;
         if (q < n) {
             int pq = (int)(lp_of(npages, q) / 512);
             lpnext = lp_of(npages, q);
-            if (pq - 1 > p && page_start[pq] == q && t[q - 1] == '\r')
+            if (pq - 1 > p && page_start[pq] == q && T(q - 1) == '\r')
                 lpnext = (int32_t)(pq - 1) * 512 + page_len[pq - 1];
             lpnext -= lp0 + 512;
         }

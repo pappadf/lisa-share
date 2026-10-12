@@ -91,7 +91,9 @@ void macfile_draw(WindowPtr w, const char *prefix);
 /* lisawrite.c: LisaWrite documents (tool 1), one file named the document's prefix */
 #define LW_TOOL 1
 #define LW_MAX_TEXT 60000               /* the longest text converted */
-int lw_write(const char *path, const uint8_t *text, int32_t len);  /* 0 or an error */
+/* 0 or an error.  The text's line ends are changed to CR in place, and the
+   buffer needs room for one more byte (a final CR). */
+int lw_write(const char *path, uint8_t *text, int32_t len);
 int32_t lw_read(const char *path, uint8_t *out, int32_t max);      /* the body's length, or -1 */
 
 /* lisadoc.c: any Lisa document's files (for copying it as it is) */

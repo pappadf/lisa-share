@@ -23,6 +23,11 @@ LISA_MAKE = $(MAKE) -C $(LISA_C)
 
 all: tool
 
+# Every emulator run (tests, demo) is on a 1 MB Lisa, as granny-smith's web
+# build and most real Lisas are: memory is tight there, and a tool that only
+# fits in 2 MB hangs at startup (see lisa-c's tools/lisalink.py).
+export RAM ?= 1024
+
 # The tool, Lisa Share (tool/), with the driver on its floppy.  It has no
 # stationery: like the Calculator it is opened from its own icon, and its
 # window is titled "Lisa Share".  The window is where the Desktop Manager

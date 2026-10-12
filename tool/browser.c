@@ -8,6 +8,7 @@
  * (browser_download).  The network calls are lib/atk.h's; they poll, so the
  * tool does nothing else while one runs. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "lisashare.h"
 
@@ -256,7 +257,18 @@ typedef struct manifest {
     } f[MAXFILES];
 } manifest;
 
-static manifest man;                    /* the one being read or written */
+/* Buffers, shared to keep the tool's globals small: every one of them is
+   memory a 1 MB Lisa must find for the tool's data segment before it starts.
+   xfer is for one file copy at a time (fetch_fork, send_file) or a MANIFEST
+   being read; the manifest read (man) and the one being written (mtext) are
+   never needed together. */
+static uint8_t xfer[4096];
+static union {
+    manifest m;
+    char text[4096];
+} mbuf;
+#define man (mbuf.m)
+#define mtext (mbuf.text)
 
 static int is_bundle(const afp_entry *e)
 {
@@ -273,14 +285,13 @@ int browser_can_copy(void)
 /* Read the open fork of a server file to its end into a local file. */
 static int32_t fetch_fork(uint16_t fork, int16_t refnum, uint32_t *total)
 {
-    static uint8_t buf[4096];
     int32_t err;
     int got, e;
 
     *total = 0;
     for (;;) {
-        err = afp_read(&br.s, fork, *total, sizeof buf, buf, &got);
-        if (got > 0 && (e = macfile_write(refnum, buf, got)) != 0)
+        err = afp_read(&br.s, fork, *total, sizeof xfer, xfer, &got);
+        if (got > 0 && (e = macfile_write(refnum, xfer, got)) != 0)
             return e;
         *total += (uint32_t)got;
         if (err == AFP_EOF || got == 0)
@@ -307,7 +318,6 @@ static int32_t fetch(uint16_t vol, uint32_t dir, const char *name, int rsrc, int
 /* Send a local file into one fork of a new file on the server. */
 static int32_t send_file(const char *path, uint32_t dir, const char *name, int rsrc, uint32_t *total)
 {
-    static uint8_t buf[4096];
     int16_t refnum;
     uint16_t fork;
     int32_t err, got;
@@ -320,8 +330,8 @@ static int32_t send_file(const char *path, uint32_t dir, const char *name, int r
         macfile_close(refnum);
         return err;
     }
-    while (!err && (got = macfile_read(refnum, buf, sizeof buf)) > 0) {
-        err = afp_write(&br.s, fork, *total, buf, (int)got);
+    while (!err && (got = macfile_read(refnum, xfer, sizeof xfer)) > 0) {
+        err = afp_write(&br.s, fork, *total, xfer, (int)got);
         *total += (uint32_t)got;
     }
     afp_close_fork(&br.s, fork);
@@ -368,7 +378,7 @@ static int parse_manifest(char *text)
 
 static int32_t read_manifest(uint16_t vol, uint32_t dir)
 {
-    static char text[4096];
+    char *text = (char *)xfer;
     uint16_t fork;
     int32_t err;
     int got;
@@ -376,7 +386,7 @@ static int32_t read_manifest(uint16_t vol, uint32_t dir)
     err = afp_open_fork(&br.s, vol, dir, "MANIFEST", 0, &fork);
     if (err)
         return err;
-    err = afp_read(&br.s, fork, 0, sizeof text - 1, (uint8_t *)text, &got);
+    err = afp_read(&br.s, fork, 0, sizeof xfer - 1, xfer, &got);
     afp_close_fork(&br.s, fork);
     if (err && err != AFP_EOF)
         return err;
@@ -487,7 +497,22 @@ void browser_copy_macfile_lw(WindowPtr w, const char *prefix)
         snprintf(r->local, sizeof r->local, "%s", prefix);
 }
 
-static uint8_t text[LW_MAX_TEXT];
+/* The text being converted.  Taken from the heap only while converting
+   (malloc's data segment): the tool must fit in a 1 MB Lisa. */
+static uint8_t *text;
+
+static int text_alloc(void)
+{
+    if (!text)
+        text = malloc(LW_MAX_TEXT + 1);   /* + a final CR (lw_write) */
+    return text != 0;
+}
+
+static void text_free(void)
+{
+    free(text);
+    text = 0;
+}
 
 /* A server file's data fork into `text`; its length, or -1. */
 static int32_t fetch_text(uint16_t vol, struct ref *r)
@@ -499,10 +524,10 @@ static int32_t fetch_text(uint16_t vol, struct ref *r)
     if (afp_open_fork(&br.s, vol, r->dir, r->name, 0, &fork))
         return -1;
     do {
-        err = afp_read(&br.s, fork, (uint32_t)n, (int)(sizeof text - n > 4096 ? 4096 : sizeof text - n),
+        err = afp_read(&br.s, fork, (uint32_t)n, (int)(LW_MAX_TEXT - n > 4096 ? 4096 : LW_MAX_TEXT - n),
                        text + n, &got);
         n += got;
-    } while (!err && got > 0 && n < (int32_t)sizeof text);
+    } while (!err && got > 0 && n < LW_MAX_TEXT);
     afp_close_fork(&br.s, fork);
     return (err && err != AFP_EOF) ? -1 : n;
 }
@@ -515,7 +540,7 @@ static int32_t local_text(const char *prefix)
 
     if (macfile_open_fork(prefix, 0, &refnum))
         return -1;
-    while (n < (int32_t)sizeof text && (got = macfile_read(refnum, text + n, (int32_t)sizeof text - n)) > 0)
+    while (n < LW_MAX_TEXT && (got = macfile_read(refnum, text + n, LW_MAX_TEXT - n)) > 0)
         n += got;
     macfile_close(refnum);
     return n;
@@ -586,9 +611,14 @@ int32_t browser_download(const char *source, const char *prefix)
     if (n < 0 || n >= br.nrefs || n < br.nrefs - MAXREFS)
         return ATK_E_FUNCTION;
     r = &br.refs[n % MAXREFS];
+    if ((r->kind == 'M' || r->kind == 'W') && !text_alloc()) {
+        status("There is not enough memory to convert \"%s\".", r->name);
+        return ATK_E_FRAME;
+    }
     if (r->kind == 'M') {               /* a Mac file document, converted: no network */
         int32_t len = local_text(r->local);
         err = len < 0 ? ATK_E_FRAME : lw_write(prefix, text, len);
+        text_free();
         if (!err)
             status("Converted to LisaWrite: %ld characters.", (long)len);
         return err;
@@ -602,6 +632,7 @@ int32_t browser_download(const char *source, const char *prefix)
     if (!err && r->kind == 'W') {      /* a server file as a LisaWrite document */
         int32_t len = fetch_text(vol, r);
         err = len < 0 ? ATK_E_FRAME : lw_write(prefix, text, len);
+        text_free();
         if (!err)
             status("Copied \"%s\" as a LisaWrite document: %ld characters.", r->name, (long)len);
     } else if (!err) {
@@ -691,7 +722,7 @@ static void upload_macfile(const char *prefix)
 static void upload_lisadoc(const char *prefix, const char *docname)
 {
     static char names[MAXFILES][33];
-    static char text[4096];
+    char *text = mtext;
     char folder[33], want[40], path[256], srv[33], vol[64];
     const char *base = strrchr(prefix, '-');
     uint32_t dir, len;
@@ -708,7 +739,7 @@ static void upload_lisadoc(const char *prefix, const char *docname)
     base_len = (int)strlen(base + 1);
     snprintf(want, sizeof want, "%.27s%s", docname, BUNDLE);
     err = create_unique(want, 1, folder, &dir);
-    n = snprintf(text, sizeof text, "LisaShare document 1\ntool\t%d\nname\t%s\n", lisadoc_tool(prefix), docname);
+    n = snprintf(text, sizeof mtext, "LisaShare document 1\ntool\t%d\nname\t%s\n", lisadoc_tool(prefix), docname);
     for (i = 0; i < nfiles && !err; i++) {
         const char *suffix = names[i] + base_len;
         snprintf(srv, sizeof srv, "%s", suffix[0] ? suffix : "(label)");
@@ -717,10 +748,10 @@ static void upload_lisadoc(const char *prefix, const char *docname)
         err = afp_create_file(&br.s, br.vol_id, dir, srv);
         if (!err)
             err = send_file(path, dir, srv, 0, &len);
-        n += snprintf(text + n, sizeof text - (size_t)n, "file\t%s\t%s\t", suffix, srv);
-        for (j = 0; j < label_len && n < (int)sizeof text - 3; j++)
-            n += snprintf(text + n, sizeof text - (size_t)n, "%02x", label[j]);
-        n += snprintf(text + n, sizeof text - (size_t)n, "\n");
+        n += snprintf(text + n, sizeof mtext - (size_t)n, "file\t%s\t%s\t", suffix, srv);
+        for (j = 0; j < label_len && n < (int)sizeof mtext - 3; j++)
+            n += snprintf(text + n, sizeof mtext - (size_t)n, "%02x", label[j]);
+        n += snprintf(text + n, sizeof mtext - (size_t)n, "\n");
     }
     if (!err)
         err = afp_create_file(&br.s, br.vol_id, dir, "MANIFEST");
@@ -752,6 +783,10 @@ void browser_paste_text(void)
 
     if (!browser_can_paste())
         return;
+    if (!text_alloc()) {
+        status("There is not enough memory to convert documents.");
+        return;
+    }
     npasted = 0;
     ReadIconRefs(&e, &ref_proc, &ref_window, &ref_identity, (TProc)collect_ref);
     for (i = 0; i < npasted; i++) {
@@ -759,7 +794,7 @@ void browser_paste_text(void)
             continue;
         cstr(prefix, pasted[i].diskName, sizeof prefix);
         cstr(want, pasted[i].userName, sizeof want);
-        len = lw_read(prefix, text, sizeof text);
+        len = lw_read(prefix, text, LW_MAX_TEXT);
         if (len < 0) {
             status("\"%s\" cannot be read as a LisaWrite document.", want);
             continue;
@@ -779,6 +814,7 @@ void browser_paste_text(void)
             status("Copied \"%s\" to the server as text: %ld characters.", name, (long)len);
         done++;
     }
+    text_free();
     if (!done && npasted)
         status("Paste as Text takes LisaWrite documents.");
     else if (!npasted)

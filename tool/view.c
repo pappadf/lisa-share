@@ -128,25 +128,24 @@ static int32_t when(const view_row *r)
     return r->mdate ? r->mdate : r->cdate;
 }
 
-static void sort_rows(void)
+static void sort_rows(void)             /* rows fetched as needed: no copy of them all */
 {
-    static view_row rows[64];
+    view_row a, b;
     int i, j, t, swap;
 
     norder = browser_nrows();
     if (norder > 64)
         norder = 64;
-    for (i = 0; i < norder; i++) {
+    for (i = 0; i < norder; i++)
         order[i] = i;
-        browser_row(i, &rows[i]);
-    }
-    for (i = 0; i < norder; i++)        /* a simple insertion sort, as small as the lists are */
+    for (i = 1; i < norder; i++)        /* a simple insertion sort, as small as the lists are */
         for (j = i; j > 0; j--) {
-            const view_row *a = &rows[order[j - 1]], *b = &rows[order[j]];
-            if (mode == V_CHRONO && (a->has_dates || b->has_dates))
-                swap = when(a) < when(b);           /* most recent first */
+            browser_row(order[j - 1], &a);
+            browser_row(order[j], &b);
+            if (mode == V_CHRONO && (a.has_dates || b.has_dates))
+                swap = when(&a) < when(&b);         /* most recent first */
             else
-                swap = ci_compare(a->name, b->name) > 0;
+                swap = ci_compare(a.name, b.name) > 0;
             if (!swap)
                 break;
             t = order[j];
