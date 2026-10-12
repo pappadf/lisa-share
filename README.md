@@ -1,11 +1,10 @@
 # Lisa Share
 
-AppleShare file sharing for the Apple Lisa Office System (LOS 3.x). Lisa Share
-is a desktop tool on one floppy. It connects the Lisa to AppleShare (AFP)
-servers over LocalTalk on Serial B, so you can browse their volumes and copy
-files between a server and the Lisa desktop. It's written in C and
+AFP file sharing for the Apple Lisa Office System (LOS 3.x). It connects the Lisa
+to AppleShare (AFP) servers over LocalTalk on Serial B, so you can browse their
+volumes and copy files between a server and the Lisa desktop. It's written in C and
 cross-compiled with [lisa-c](https://github.com/pappadf/lisa-c); it runs on the
-LOS desktop (tested in the granny-smith emulator).
+LOS desktop (tested in the Granny Smith emulator).
 
 ![Lisa Share above a Lisa disk window, both in list view](docs/screenshot.png)
 
@@ -19,13 +18,9 @@ x 364 screen with each pixel 2 wide and 3 tall, because Lisa pixels are about
 
 *Housekeeping > Pictorial View: the same folder as icons, as in a disk window.*
 
-![The copied text open in LisaWrite](docs/screenshot3.png)
-
-*The copied document, open in LisaWrite.*
-
 **Try it in your browser:** [pappadf.github.io/lisa-share](https://pappadf.github.io/lisa-share/)
-boots a Lisa in the granny-smith emulator with the latest release's floppy in
-the drive. The emulator has an AppleShare server of its own, **Shared
+boots a Lisa in the Granny Smith emulator with the latest release's floppy in
+the drive. The emulator has an "virtual" AFP server of its own, **Shared
 Folders**. Its volume **Shared** is the folder `/opfs/shared` in the
 emulator's Filesystem panel: drop some files there to have something to copy.
 
@@ -41,7 +36,7 @@ make toolchain    # once: download lisa-c's prebuilt compiler
 make serve        # build, then print a link to open in your browser
 ```
 
-The link opens granny-smith (the emulator's web build) with the Office System
+The link opens Granny Smith (emulator in the browser) with the Office System
 3.1 started and the Lisa Share floppy in the drive. On the Lisa desktop, open
 the **Lisa Share** diskette, then the **Lisa Share** tool in it.
 
@@ -64,13 +59,11 @@ two.
    View** (a list with Title, Size in blocks, Modified and Created). A status
    line at the bottom says where you are and what happened.
 4. **Server to Lisa:** select a file and choose **Edit > Copy**. Then select a
-   disk or folder on the desktop and choose **Edit > Paste**. The file arrives
-   as a Mac file document, which keeps both forks and the Finder information.
+   disk or folder on the desktop and choose **Edit > Paste**.
    Opening it shows the information and the start of its text.
 5. **Lisa to server:** select a document on the desktop and choose **Edit >
    Copy Reference**. Then, in the Lisa Share window, open the folder to copy it
    to and choose **Edit > Paste**.
-   - A Mac file document becomes the Mac file it was.
    - Any other Lisa document (LisaWrite, LisaCalc, ...) is copied as it is, into
      a folder "*name*.lisa". The folder holds the document's files and a
      MANIFEST naming the owning tool and each file's label. Lisa Share shows
@@ -138,7 +131,7 @@ make screenshots    # ... and docs/*.png from it
 make driver         # the LocalTalk driver alone: build/atalk.drv
 ```
 
-`make serve` downloads granny-smith's web build from its GitHub releases (once)
+`make serve` downloads Granny-Smith's web build from its GitHub releases (once)
 and serves everything from a local web server; in a GitHub Codespace it prints
 the forwarded address too. It needs granny-smith v0.9.4 or later, the first
 release whose Lisa has Serial B on the emulator's AppleTalk network. It uses
@@ -156,23 +149,6 @@ disk with LisaWrite.
 To move to a newer lisa-c: `git -C lisa-c pull`, check that everything still
 works, then commit the new `lisa-c` pointer.
 
-## Releases
-
-Pushing a version tag (`git tag v0.1 && git push origin v0.1`) runs
-`.github/workflows/release.yml`. It builds the floppy, attaches it to the
-GitHub release as `lisashare-<tag>.dc42`, and publishes it on GitHub Pages:
-
-- `https://pappadf.github.io/lisa-share/lisashare.dc42` is the latest floppy.
-  Pages sends CORS headers, so granny-smith's web build can load it with
-  `FD0=<that URL>`.
-- `https://pappadf.github.io/lisa-share/` is a page with a Boot link
-  (`tools/pages.py`).
-
-The first time, set the repository's Settings > Pages > Source to "GitHub
-Actions". Then, under Settings > Environments > github-pages, add `v*` to the
-deployment branches and tags: by default only `main` may deploy, and this
-workflow runs on tags.
-
 ## Source
 
 | Path | What |
@@ -189,21 +165,6 @@ workflow runs on tags.
 | `demo/share/` | The files the demo session shares |
 | `tools/` | `lwmake.py` / `lwtext.py` (LisaWrite documents, for the tests), `longtext.py`, `aspect.py` (screenshots), `pages.py` |
 | `docs/` | The design, and the screenshots |
-
-## Probes
-
-Probes are small desktop tools, in `probes/`, that each check one assumption
-about LOS on the real Office System. Each shows its steps in its window and
-writes them to a `<NAME>.RESULTS` file on its floppy, which `make test` reads
-back.
-
-| Probe | What it checks | Result |
-|---|---|---|
-| `serialb` | Can a tool take over Serial B at run time? It reads the port with `CDINFO`, detaches the driver with `CDKILL`, then attaches it again with `CDMAKE` and the saved info, and mounts it. | **Yes.** Serial B is held by a configurable driver, ID 32 (the "Serial Cable" driver), not a built-in one. `CDKILL` succeeds, after which `CDINFO` reports 751 (no device). `CDMAKE` restores the same driver, and `MOUNT` makes it usable again (`CDKILL` unmounts the device, and `CDMAKE` does not mount it). |
-| `llap` | Does the LocalTalk driver work? It installs `SYSTEM.CD_ATALK` at Serial B, acquires a node ID, acquires again starting at 33 (taken by the emulator's node), sends an AppleTalk Echo request to node 33 and reads the reply. | **Yes, in the emulator.** The driver gets a node ID; at 33 the lapACK makes it pick another. The echo request goes out with lapRTS/lapCTS. The driver's interrupt code answers the network's lapRTS with a lapCTS and queues the echo reply. |
-| `nbp` | Can the stack find services? It looks up `=:=@*` and `=:AFPServer@*`. | **Yes.** All three of granny-smith's entities: "Shared Folders" (AFPServer, node 33 socket 8), "Virtual LaserWriter" and "gs-host". |
-| `afp` | Can the stack read a file from an AppleShare server? NBP lookup, ASP GetStatus and OpenSession, then AFP FPLogin (guest), FPGetSrvrParms, FPOpenVol, FPEnumerate, FPOpenFork and FPRead. | **Yes.** It reads "Hello from the AppleShare server!" (the read ends with EOFErr, as it should). |
-| `paste` | Can a tool create a document on the desktop? It puts an icon reference on the Clipboard; the test pastes it into the diskette with the Desktop Manager's Edit > Paste. | **Yes.** The Desktop Manager makes the catalog entry, owned by the probe's tool number, then sends the tool fcCopy with the new document's file prefix, and the tool writes the file. The tool has to set its own window aside first, so that the disk's window is in front. |
 
 ## Not yet
 
@@ -228,6 +189,4 @@ All trademarks referenced in this project are the property of their respective o
 
 ## License
 
-MIT; see `LICENSE`. No Apple software is included or needed to build. Running
-needs a Lisa ROM and an Office System disk: your own, or the archive.org copies
-the browser link uses.
+MIT; see `LICENSE`.
